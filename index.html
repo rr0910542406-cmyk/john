@@ -1,16 +1,323 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#222824"><meta name="apple-mobile-web-app-capable" content="yes"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="vendor/leaflet.css"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="classroom.css"><title>PACE 校園運動 · 逢甲大學</title></head><body>
-<svg class="sprite" xmlns="http://www.w3.org/2000/svg"><symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 15v-5a4 4 0 0 1 4-4h5M18 9v5a4 4 0 0 1-4 4h-5"/></symbol><symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M8 15v-4m5 4V7m5 8v-6"/></symbol><symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5v15M12 5C8 2 3 4 3 4v14s5-2 9 2c4-4 9-2 9-2V4s-5-2-9 1Z"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol><symbol id="i-pin" viewBox="0 0 24 24"><path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/></symbol><symbol id="i-cross" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 2v5m0 10v5M2 12h5m10 0h5"/></symbol></svg>
-<aside class="sidebar"><a class="brand" href="./" aria-label="PACE 校園運動首頁"><span class="brand-symbol">//</span>PACE<span class="brand-sub">校園運動</span></a><div class="workspace-label">FENG CHIA UNIVERSITY</div><nav class="sidenav"><a href="#exercise" class="active"><svg><use href="#i-route"/></svg>開始運動<span class="nav-dot"></span></a><a href="#history"><svg><use href="#i-chart"/></svg>運動紀錄</a><a href="classroom.html" data-cloud-only><svg><use href="#i-chart"/></svg>班級中心</a><a href="review.html"><svg><use href="#i-chart"/></svg>匯入檢視</a><a href="handout.html"><svg><use href="#i-book"/></svg>學習中心</a></nav><div class="side-bottom"><div class="campus-logo">FCU</div><strong>逢甲大學</strong><span>校園戶外運動課程</span><a href="guide.html">使用說明 <span>↗</span></a><div class="local-note"><i></i> 本機紀錄<span data-cloud-only> · 自選雲端繳交</span></div></div></aside>
-<div class="shell"><header class="topbar"><div class="breadcrumb">我的空間 <span>/</span> <strong>開始運動</strong></div><div class="topright"><span class="device-label">個人運動模式</span><span class="avatar">我</span></div></header><main>
-<section class="pageheading"><div><div class="overline">YOUR DAILY MOVEMENT</div><h1>校園運動<span class="title-dot">.</span></h1><p>依照自己的節奏，完成今天的練習。</p></div><div class="dateblock"><span id="todayDate"></span><small>逢甲大學 · 台中</small></div></section>
-<section class="image-hero"><img src="assets/campus-run.webp" alt="生成示意：學生在綠蔭步道慢跑" fetchpriority="high"><div class="image-hero-copy"><span>MOVE AT YOUR OWN PACE</span><h2>今天的路，<br>一起走。</h2><a href="classroom.html" data-cloud-only>進入班級中心 <span>↗</span></a></div><small class="image-credit">AI 生成情境示意 · 非校園實景</small></section><section class="workout" id="exercise"><div class="mapcard"><div class="maptop"><div class="map-title"><svg><use href="#i-pin"/></svg><strong>逢甲校園</strong><span>探索地圖</span></div><span class="status" id="badge">● 尚未定位</span></div><div class="maparea"><div id="map" aria-label="逢甲大學校園互動地圖"></div><div class="map-instruction">點選地圖設定集合點</div><div class="maptools"><button id="locate" aria-label="我的定位" title="我的定位"><svg><use href="#i-cross"/></svg></button><button id="campus" aria-label="回到校園" title="回到校園"><svg><use href="#i-pin"/></svg></button></div><div class="map-scale-note"><span class="track-key"></span>本次運動軌跡</div></div><div class="mapnote"><span class="destination-icon"><svg><use href="#i-route"/></svg></span><div><strong>集合點</strong><span id="targetInfo">在地圖上選擇老師指定的位置</span></div><a id="navigate" hidden target="_blank" rel="noopener">導航 ↗</a><button id="clearTarget" title="清除集合點" aria-label="清除集合點">×</button></div></div>
-<aside class="session-panel"><div class="session-top"><span><i></i> 本次運動</span><span id="activityLabel">舒適步行</span></div><div class="primarymetric"><span>累積距離</span><div><b id="distance">0.00</b><span>km</span></div></div><div class="metric-grid"><article><span>運動時間</span><strong id="elapsed">00:00</strong><small>不含暫停</small></article><article><span>平均速度</span><strong><b id="speed">0.0</b><em>km/h</em></strong><small>距離 ÷ 時間</small></article><article class="energy"><span>估算熱量 <button class="info-button" id="energyInfo" aria-label="查看熱量估算方式">i</button></span><strong><b id="calories">0</b><em>kcal</em></strong></article></div><div class="session-message" id="message" role="status" aria-live="polite">開啟定位，準備記錄你的第一步。</div><div class="actiondock"><button class="primary" id="openSetup"><span>開始運動</span><svg><use href="#i-arrow"/></svg></button><div class="controls"><button id="pause" disabled>Ⅱ 暫停</button><button id="finish" disabled>■ 結束並儲存</button></div></div><div class="signalbar"><span>GPS <b id="accuracy">—</b></span><span id="points">0 個有效點</span></div></aside></section>
-<section class="training-strip"><div class="training-icon"><svg><use href="#i-route"/></svg></div><div class="training-copy"><span>今日建議練習</span><strong>20 分鐘校園探索</strong></div><div class="training-steps"><span><i>01</i>暖身 5 分鐘</span><b>—</b><span><i>02</i>步行或慢跑</span><b>—</b><span><i>03</i>緩和與回顧</span></div><a href="handout.html">課程內容 <svg><use href="#i-arrow"/></svg></a></section>
-<section id="history" class="history-section"><div class="sectionheading"><div><span class="overline">ACTIVITY LOG</span><h2>每一次，都算數。</h2></div><button id="exportAll" class="export">匯出紀錄 <span>↓</span></button></div><div class="historybar"><div class="filters" aria-label="篩選紀錄"><button class="selected" data-filter="all" aria-pressed="true">全部紀錄</button><button data-filter="real" aria-pressed="false">GPS 運動</button><button data-filter="demo" aria-pressed="false">示範</button></div><span id="historyTotal">尚無運動紀錄</span></div><div id="records"></div><button id="deleteAll" class="delete-all">管理資料：清除全部紀錄</button></section>
-<section class="editorial-cards"><article class="editorial-card"><img src="assets/track-essentials.webp" alt="生成示意：跑道旁的跑鞋與運動裝備" loading="lazy"><div><span class="overline">TRAINING NOTES</span><h3>把 20 分鐘，留給自己。</h3><p>暖身、步行與緩和。從一次舒服的練習開始。</p><a href="handout.html">閱讀課程講義 →</a><small>　AI 生成情境示意</small></div></article><article class="editorial-card" data-cloud-only><img src="assets/campus-run.webp" alt="生成示意：同學一起運動" loading="lazy"><div><span class="overline">CLASSROOM CONNECTION</span><h3>一堂課，連結每個人的進步。</h3><p>加入班級、繳交運動紀錄，讓老師看見你的練習。</p><a href="classroom.html">開啟班級中心 →</a><small>　AI 生成情境示意</small></div></article></section><footer><span><b>PACE</b> 校園運動教學模板 · 非逢甲大學官方系統</span><a href="guide.html">裝置與隱私說明 ↗</a><p>地圖 © OpenStreetMap contributors。完整位置軌跡僅儲存在本機；<span data-cloud-only>運動摘要可由你確認後繳交至班級資料庫。</span>地圖供應者可接收 IP 與地圖範圍，外部導航會接收目的地。</p></footer>
-</main></div>
-<dialog id="setupDialog"><div class="dialog-head"><div><span class="overline">BEFORE YOU GO</span><h2>準備開始</h2></div><button id="closeSetup" class="close" aria-label="關閉設定">×</button></div><p class="dialog-intro">確認個人資料，讓這次運動有自己的紀錄。</p><form id="profile"><fieldset id="fields"><label>課堂代號 <span>選填，不需真實姓名</span><input id="alias" maxlength="24" placeholder="例如 A 組 07"></label><div class="three"><label>身高 <span>cm</span><input id="height" type="number" min="80" max="230" value="165" required></label><label>體重 <span>kg</span><input id="weight" type="number" min="20" max="250" step="0.1" value="60" required></label><label>年齡 <span>歲</span><input id="age" type="number" min="6" max="100" value="20" required></label></div><label>運動方式<select id="mode"><option value="3.5">舒適步行 · 3.5 MET</option><option value="4.8">快走 · 4.8 MET</option><option value="7.5">慢跑 · 7.5 MET</option></select></label><div class="privacy-note"><svg><use href="#i-cross"/></svg><span>保持網頁在前景。切換 App 或鎖屏會暫停，返回後請按繼續。</span></div><label class="check"><input id="consent" type="checkbox" required><span>同意在此裝置記錄位置與運動資料，可隨時刪除。</span></label></fieldset><button class="primary" id="start" type="submit">開始 GPS 運動 <svg><use href="#i-arrow"/></svg></button></form><button class="demo-link" id="demo">先體驗示範運動</button><p class="fine">熱量僅供教學參考。身高、年齡不參與估算；成人 MET 不宜作未滿 19 歲學生的個人評估。</p></dialog>
-<dialog id="energyDialog"><div class="dialog-head"><h2>熱量如何估算？</h2><button class="close" id="closeEnergy" aria-label="關閉熱量說明">×</button></div><p>以你選擇的活動強度（MET）、體重與運動時間估算總消耗，包含休息代謝。</p><div class="formula">MET × 3.5 × 體重 kg ÷ 200 × 分鐘</div><p class="fine">不是 GPS 直接測量，也不能作為醫療或飲食處方。實際消耗因速度、坡度與個人體能而異。</p><a href="handout.html">查看完整教學講義 →</a></dialog>
-<script src="vendor/leaflet.js"></script><script src="mode.js"></script>
-<script src="tiles.js"></script>
-<script src="core.js"></script><script src="app.js"></script><script src="cloud-upload.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="PACE 校園運動平台，幫助學生以舒適節奏完成校園運動與運動紀錄。"
+    />
+    <title>PACE 校園運動 · 逢甲大學</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body data-page="index">
+    <div class="site-shell">
+      <header class="topbar">
+        <div class="brand" aria-label="PACE 校園運動首頁">
+          <div class="brand-mark">PACE</div>
+          <div class="brand-copy">
+            <span class="brand-name">PACE</span>
+            <span class="brand-sub">校園運動</span>
+          </div>
+        </div>
+        <div class="school-tag">FENG CHIA UNIVERSITY</div>
+        <nav class="main-nav" aria-label="主選單">
+          <a href="#exercise">開始運動</a>
+          <a href="#history">運動紀錄</a>
+          <a href="review.html">匯入檢視</a>
+          <a href="handout.html">學習中心</a>
+        </nav>
+      </header>
+
+      <main class="page-wrap">
+        <section class="hero-panel">
+          <div class="hero-copy">
+            <p class="eyebrow">YOUR DAILY MOVEMENT</p>
+            <h1>校園運動.</h1>
+            <p class="lead">依照自己的節奏，完成今天的練習。</p>
+            <div class="meta-row">
+              <span>10月21日週三</span>
+              <span>逢甲大學 · 台中</span>
+            </div>
+          </div>
+
+          <div class="hero-art" aria-label="學生在綠蔭步道慢跑的示意圖">
+            <div class="art-backdrop"></div>
+            <div class="art-silhouette"></div>
+            <div class="art-caption">MOVE AT YOUR OWN PACE</div>
+          </div>
+        </section>
+
+        <section class="today-strip">
+          <div class="greeting">今天的路， 一起走。</div>
+          <span class="capture-note">AI 生成情境示意 · 非校園實景</span>
+        </section>
+
+        <section class="dashboard-panel" id="exercise">
+          <div class="tracking-card">
+            <div class="card-header">
+              <div class="header-title">
+                <span class="mini-logo">逢甲校園</span>
+                <strong>探索地圖</strong>
+              </div>
+              <span class="status-dot offline">● 尚未定位</span>
+            </div>
+
+            <div class="map-box" aria-label="校園地圖">
+              <div id="campus-map" aria-label="逢甲大學校園地圖"></div>
+              <div class="map-layer-controls">
+                <button class="layer-btn active" type="button" data-layer="map">地圖</button>
+                <button class="layer-btn" type="button" data-layer="satellite">衛星</button>
+              </div>
+              <div class="map-credits">Leaflet | © OpenStreetMap contributors</div>
+            </div>
+
+            <div class="settlement">
+              <span>點選地圖設定集合點</span>
+              <div class="action-row">
+                <button class="secondary action-btn" type="button">我的定位</button>
+                <button class="secondary action-btn" type="button">回到校園</button>
+              </div>
+            </div>
+
+            <section class="route-picker" aria-label="選擇步行或慢跑路線">
+              <div class="route-picker-heading">
+                <strong>選擇運動路線</strong>
+                <span>點選路線可預覽地圖</span>
+              </div>
+              <div class="route-options">
+                <button class="route-option" type="button" data-route="easy" aria-pressed="false">
+                  <span class="route-option-top"><strong>綠蔭散步</strong><span class="route-difficulty easy">簡單</span></span>
+                  <span class="route-option-meta">步行 · 約 0.7 km · 12 分鐘</span>
+                </button>
+                <button class="route-option" type="button" data-route="steady" aria-pressed="false">
+                  <span class="route-option-top"><strong>校園慢跑</strong><span class="route-difficulty steady">中等</span></span>
+                  <span class="route-option-meta">慢跑 · 約 1.5 km · 20 分鐘</span>
+                </button>
+                <button class="route-option" type="button" data-route="challenge" aria-pressed="false">
+                  <span class="route-option-top"><strong>長距離挑戰</strong><span class="route-difficulty challenge">進階</span></span>
+                  <span class="route-option-meta">慢跑 · 約 2.8 km · 32 分鐘</span>
+                </button>
+              </div>
+              <p class="route-note" id="route-note">路線為參考示意，實際通行請留意校園動線與現場狀況。</p>
+            </section>
+
+            <div class="route-summary">
+              <span>本次運動軌跡</span>
+              <ul class="route-list">
+                <li>集合點：<strong id="meeting-point">未設定</strong></li>
+                <li>GPS 參考點：<strong id="gps-count">0 個有效點</strong></li>
+              </ul>
+            </div>
+          </div>
+
+          <aside class="stats-card">
+            <div class="stats-head">
+              <span>本次運動</span>
+              <strong id="selected-activity">自由運動</strong>
+            </div>
+
+            <div class="stat-block distance">
+              <label>累積距離</label>
+              <div class="value-wrap">
+                <strong id="distance-value">0.00</strong>
+                <span>km</span>
+              </div>
+            </div>
+
+            <div class="split-stats">
+              <article>
+                <label>運動時間</label>
+                <strong id="time-value">00:00</strong>
+                <small>不含暫停</small>
+              </article>
+              <article>
+                <label>平均配速</label>
+                <strong id="current-pace-value">0:00</strong>
+                <small>min/km</small>
+              </article>
+              <article>
+                <label>估算熱量</label>
+                <strong id="calorie-value">0</strong>
+                <small>kcal</small>
+              </article>
+            </div>
+
+            <div id="session-status" class="session-status">開啟定位，準備記錄你的第一步。</div>
+
+            <div class="workout-actions">
+              <button id="start-btn" class="primary action-btn main-cta" type="button">
+                <span>開始運動</span>
+              </button>
+              <button id="finish-btn" class="secondary action-btn finish-btn" type="button" hidden>完成並儲存</button>
+            </div>
+          </aside>
+        </section>
+
+        <section class="plan-panel">
+          <div class="plan-visual"></div>
+          <div class="plan-content">
+            <span class="eyebrow small">今日建議練習</span>
+            <h2>20 分鐘校園探索</h2>
+            <ul>
+              <li>01暖身 5 分鐘</li>
+              <li>02步行或慢跑</li>
+              <li>03緩和與回顧</li>
+            </ul>
+          </div>
+          <a href="handout.html" class="text-link">課程內容</a>
+        </section>
+
+        <section class="feature-grid" aria-label="校園特色功能">
+          <article class="feature-card">
+            <p class="eyebrow">ROUTE MODE</p>
+            <h3>智慧路線</h3>
+            <p>點選地圖設定集合點，系統會自動標記更適合步行與休息的校園節點。</p>
+            <div class="route-badges">
+              <span>樹蔭</span>
+              <span>平路</span>
+              <span>休息站</span>
+            </div>
+          </article>
+          <article class="feature-card">
+            <p class="eyebrow">MOVE SCORE</p>
+            <h3>今日成就</h3>
+            <p>完成運動目標，逐步解鎖本次成就。</p>
+            <div class="achievement-list" id="achievement-list" aria-live="polite"></div>
+            <div class="daily-goal">
+              <div class="daily-goal-heading">
+                <strong>每日運動目標</strong>
+                <label for="daily-goal-select">目標分鐘</label>
+              </div>
+              <select id="daily-goal-select" aria-label="每日運動目標分鐘數">
+                <option value="20">20 分鐘</option>
+                <option value="30" selected>30 分鐘</option>
+                <option value="45">45 分鐘</option>
+              </select>
+              <div class="daily-goal-progress" role="progressbar" aria-label="今日運動目標進度" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"><span></span></div>
+              <p id="daily-goal-summary">今日 0 / 30 分鐘</p>
+            </div>
+          </article>
+          <article class="feature-card">
+            <p class="eyebrow">PACE NOTES</p>
+            <h3>運動提醒</h3>
+            <p>建議以舒適節奏完成每段路程，避免過快出現疲勞並影響後續活動。</p>
+            <div class="reminder-tag">本日重點：保持呼吸節奏</div>
+          </article>
+        </section>
+
+        <section class="landmark-panel" aria-label="校園地標與步道資訊">
+          <div class="landmark-header">
+            <div>
+              <p class="eyebrow">CAMPUS GUIDE</p>
+              <h3>校園景點與推薦步道</h3>
+            </div>
+          </div>
+          <div class="landmark-list">
+            <button class="landmark-item" type="button" data-landmark="library">
+              <span>圖書館步道</span>
+              <small>平坦 · 近水景</small>
+            </button>
+            <button class="landmark-item" type="button" data-landmark="stadium">
+              <span>操場廣場</span>
+              <small>開闊 · 較適合暖身</small>
+            </button>
+            <button class="landmark-item" type="button" data-landmark="dormitory">
+              <span>宿舍步道</span>
+              <small>樹蔭 · 舒適步行</small>
+            </button>
+            <button class="landmark-item" type="button" data-landmark="garden">
+              <span>校園花園</span>
+              <small>休息點 · 觀景</small>
+            </button>
+          </div>
+        </section>
+
+        <section class="log-panel" id="history">
+          <div class="log-header">
+            <div>
+              <p class="eyebrow">ACTIVITY LOG</p>
+              <h2>每一次，都算數。</h2>
+            </div>
+            <button id="export-btn" class="secondary action-btn" type="button">匯出紀錄 ↓</button>
+          </div>
+
+          <div class="filter-bar" aria-label="紀錄篩選">
+            <button class="filter-btn active" type="button" data-filter="all">全部紀錄</button>
+            <button class="filter-btn" type="button" data-filter="gps">GPS 運動</button>
+            <button class="filter-btn" type="button" data-filter="estimated">估算距離</button>
+            <button class="filter-btn" type="button" data-filter="demo">示範</button>
+          </div>
+
+          <section class="history-chart-panel" aria-label="歷史運動紀錄圖表">
+            <div class="history-chart-header">
+              <div>
+                <h3>運動趨勢</h3>
+                <p id="history-chart-summary">最近 7 次有紀錄的日期</p>
+              </div>
+              <div class="chart-switch" role="group" aria-label="選擇圖表指標">
+                <button class="chart-switch-btn active" type="button" data-metric="distance" aria-pressed="true">距離</button>
+                <button class="chart-switch-btn" type="button" data-metric="time" aria-pressed="false">時間</button>
+                <button class="chart-switch-btn" type="button" data-metric="pace" aria-pressed="false">配速</button>
+              </div>
+            </div>
+            <div class="history-controls">
+              <label>開始日期<input id="history-start" type="date"></label>
+              <label>結束日期<input id="history-end" type="date"></label>
+              <div class="period-switch" role="group" aria-label="統計週期">
+                <button class="period-switch-btn active" type="button" data-period="day" aria-pressed="true">日</button>
+                <button class="period-switch-btn" type="button" data-period="week" aria-pressed="false">週</button>
+                <button class="period-switch-btn" type="button" data-period="month" aria-pressed="false">月</button>
+              </div>
+            </div>
+            <div class="history-totals" aria-label="篩選期間運動摘要">
+              <div><span>運動次數</span><strong id="history-count">0</strong></div>
+              <div><span>總距離</span><strong id="history-distance">0.0 km</strong></div>
+              <div><span>總時間</span><strong id="history-time">0 分</strong></div>
+              <div><span>平均配速</span><strong id="history-pace">--</strong></div>
+            </div>
+            <div class="history-chart-wrap">
+              <canvas id="history-chart" height="220" aria-label="歷史運動距離圖表" role="img"></canvas>
+              <p id="history-chart-empty" class="chart-empty" hidden>匯入或新增運動紀錄後，這裡會顯示趨勢。</p>
+            </div>
+            <div id="history-chart-accessible" class="visually-hidden" aria-live="polite"></div>
+          </section>
+
+          <div id="log-list" class="log-list" aria-live="polite">
+            <div class="empty-state">尚無 GPS 運動紀錄</div>
+          </div>
+
+          <div class="log-cta">
+            <button id="clear-btn" class="danger-link" type="button">管理資料：清除全部紀錄</button>
+          </div>
+        </section>
+
+        <section class="notes-panel">
+          <div class="note-image" aria-label="跑鞋與運動裝備示意"></div>
+          <div class="note-copy">
+            <p class="eyebrow">TRAINING NOTES</p>
+            <h3>把 20 分鐘，留給自己。</h3>
+            <p>暖身、步行與緩和。從一次舒服的練習開始。</p>
+            <a href="handout.html">閱讀課程講義 →</a>
+            <span class="capture-note small">AI 生成情境示意</span>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <p>PACE 校園運動教學模板 · 非逢甲大學官方系統</p>
+        <a href="guide.html">裝置與隱私說明 ↗</a>
+        <p>地圖 © OpenStreetMap contributors。完整位置軌跡僅儲存在本機； 地圖供應者可接收 IP 與地圖範圍，外部導航會接收目的地。</p>
+      </footer>
+    </div>
+  </body>
+</html>

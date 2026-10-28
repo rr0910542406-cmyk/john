@@ -1,52 +1,958 @@
-'use strict';
-const $=id=>document.getElementById(id), center=[24.1796,120.6495], KEY='campus-move-history-v1';
-// Base map source is defined in tiles.js (CARTO Voyager, OpenStreetMap data). Change it there for school-wide use.
-let records=[];try{records=JSON.parse(localStorage.getItem(KEY)||'[]');if(!Array.isArray(records))records=[];}catch{}
-let map, route, halo=null, startMarker=null, positionDot, accuracyCircle, targetMarker, targetLine, target=null, current=null;
-let session=null, watch=null, demoTimer=null, wake=null, last=null, lastSignal=0, lines=[], storageOK=true;
-function message(s){$('message').textContent=s;}
-function pinIcon(kind,label){return L.divIcon({className:'map-pin-wrap map-pin-'+kind,html:'<span class="pin-body"><b>'+label+'</b></span>',iconSize:[30,30],iconAnchor:[15,30]});}
-function setTrack(lines){if(route)route.setLatLngs(lines);if(halo)halo.setLatLngs(lines);}
-function clearStart(){if(startMarker&&map)map.removeLayer(startMarker);startMarker=null;}
-function setStart(p){clearStart();if(map)startMarker=L.marker([p.lat,p.lng],{icon:pinIcon('start','起'),zIndexOffset:500}).addTo(map).bindTooltip('起點');}
-try{map=L.map('map',{zoomControl:false}).setView(center,17);L.control.zoom({position:'bottomright'}).addTo(map);addBaseMap(map).on('tileerror',()=>message('底圖載入失敗，請檢查網路；GPS 紀錄仍可繼續。'));halo=L.polyline([],{color:'#fff',weight:9,opacity:.85,lineCap:'round',lineJoin:'round'}).addTo(map);route=L.polyline([],{color:'#d95432',weight:5,lineCap:'round',lineJoin:'round'}).addTo(map);map.on('click',e=>{target=e.latlng;if(targetMarker)map.removeLayer(targetMarker);targetMarker=L.marker(target,{icon:pinIcon('target','集'),zIndexOffset:600}).addTo(map).bindPopup('老師指定的集合點').openPopup();updateTarget();});}catch{$('map').innerHTML='<p class="map-fallback">地圖元件無法載入，請重新整理。GPS 記錄仍可使用。</p>';}
-function updateTarget(){if(!target){$('navigate').hidden=true;$('targetInfo').textContent='點一下地圖，設定老師指定的集合點。';return;}let info='集合點已設定（依老師現場指示通行）。';if(current){info=`距集合點直線約 ${Math.round(MoveCore.distance(current,{lat:target.lat,lng:target.lng}))} 公尺；虛線不是步行路線。`;if(targetLine)map.removeLayer(targetLine);targetLine=L.polyline([[current.lat,current.lng],target],{color:'#ae703d',dashArray:'6 8',weight:2}).addTo(map);}$('targetInfo').textContent=info;$('navigate').hidden=false;$('navigate').href=`https://www.google.com/maps/dir/?api=1&destination=${target.lat},${target.lng}&travelmode=walking`;}
-function clearTarget(){target=null;for(const l of [targetMarker,targetLine])if(l&&map)map.removeLayer(l);targetMarker=targetLine=null;updateTarget();}
-$('clearTarget').onclick=clearTarget;$('campus').onclick=()=>map&&map.setView(center,17);
-function displayPosition(p){current=p;if(map){const ll=[p.lat,p.lng];if(!positionDot){positionDot=L.circleMarker(ll,{radius:7,color:'white',weight:3,fillColor:'#2f88b3',fillOpacity:1}).addTo(map);accuracyCircle=L.circle(ll,{radius:p.accuracy,color:'#2f88b3',weight:1,fillOpacity:.08}).addTo(map);}else{positionDot.setLatLng(ll);accuracyCircle.setLatLng(ll).setRadius(p.accuracy);}}$('accuracy').textContent=`±${Math.round(p.accuracy)} m`;updateTarget();}
-const GEO_REASONS={1:'定位權限被拒絕：請到瀏覽器／手機設定允許位置與精確定位後重試。',2:'目前無法取得位置，請移到戶外空曠處。',3:'定位逾時，請確認 GPS 已開啟後重試。'};
-function geoError(err){if(session?.state==='running')pause('定位中斷，已暫停。'+(GEO_REASONS[err.code]||'請重試。'));else message(GEO_REASONS[err.code]||'定位失敗。');$('badge').textContent='● 定位不可用';}
-function locateError(err){message(GEO_REASONS[err.code]||'定位失敗。');if(!session||session.state!=='running')$('badge').textContent='● 定位不可用';}
-function available(){if(!window.isSecureContext){message('GPS 需要 HTTPS 網址（電腦本機 localhost 例外），請依部署說明開啟。');return false;}if(!navigator.geolocation){message('此瀏覽器不支援定位，請改用 Safari 或 Chrome。');return false;}return true;}
-$('locate').onclick=()=>{if(session?.demo){message('示範模式使用模擬位置；結束後可取得真實定位。');return;}if(!available())return;message('正在取得你的定位…');navigator.geolocation.getCurrentPosition(pos=>{const p=normalize(pos);displayPosition(p);map&&map.setView([p.lat,p.lng],18);$('badge').textContent='● 已定位';message('已顯示目前位置。開始運動才會記錄軌跡。');},locateError,{enableHighAccuracy:true,timeout:15000,maximumAge:0});};
-function normalize(pos){return {lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy,t:pos.timestamp};}
-function seconds(){return session?session.seconds+(session.state==='running'&&session.runStart?(Date.now()-session.runStart)/1000:0):0;}
-function fmt(n){const s=Math.floor(n);return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
-function render(){document.body.classList.toggle('is-active',!!session&&session.state!=='finished');$('activityLabel').textContent=session?.demo?'示範運動':session?.mode?.split(' · ')[0]||'舒適步行';const s=seconds(),d=session?.meters||0;$('elapsed').textContent=fmt(s);$('distance').textContent=(d/1000).toFixed(2);$('calories').textContent=session?Math.round(MoveCore.calories(session.met,session.weight,s)):0;$('speed').textContent=s>0?(d/s*3.6).toFixed(1):'0.0';$('points').textContent=`${session?.points.length||0} 個有效點`;$('fields').disabled=!!session&&session.state!=='finished';$('start').disabled=!!session&&session.state!=='finished';$('demo').disabled=$('start').disabled;$('pause').disabled=!session||session.state==='finished';$('finish').disabled=!session||session.state==='finished';$('pause').textContent=session?.state==='paused'?'▶ 繼續':'Ⅱ 暫停';}
-async function holdScreen(){try{if('wakeLock'in navigator)wake=await navigator.wakeLock.request('screen');}catch{}}
-function stopWatch(){if(watch!==null){navigator.geolocation.clearWatch(watch);watch=null;}clearInterval(demoTimer);demoTimer=null;wake?.release().catch(()=>{});wake=null;}
-function receive(p){if(!session||session.state!=='running')return;lastSignal=Date.now();displayPosition(p);const result=MoveCore.accept(last,p);if(!result.ok){message(result.reason);return;}if(!session.runStart)session.runStart=Date.now();if(result.break||!lines.length)lines.push([]);lines[lines.length-1].push([p.lat,p.lng]);session.meters+=result.meters;session.points.push({...p,segment:lines.length-1});last=p;setTrack(lines);if(session.points.length===1&&map){map.setView([p.lat,p.lng],17);setStart(p);}$('badge').textContent=session.demo?'● 示範資料':'● GPS 記錄中';message(session.demo?'示範模式：使用模擬座標與時間，紀錄不代表真實運動。':'記錄中。保持頁面在前景；停下來休息時請按暫停。');render();}
-function run(){session.state='running';session.runStart=0;last=null;lastSignal=Date.now();if(session.demo){demoTick();demoTimer=setInterval(demoTick,1000);}else{watch=navigator.geolocation.watchPosition(pos=>receive(normalize(pos)),geoError,{enableHighAccuracy:true,maximumAge:0,timeout:15000});holdScreen();}render();}
-function begin(demo){const fields=demo?['height','weight','age'].map($):[$('profile')];if(!fields.every(el=>el.reportValidity()))return;if(!demo&&!available())return;$('setupDialog').close();stopWatch();session={id:Date.now(),date:new Date().toISOString(),alias:$('alias').value.trim(),height:+$('height').value,weight:+$('weight').value,age:+$('age').value,met:+$('mode').value,mode:$('mode').selectedOptions[0].textContent,demo,seconds:0,meters:0,points:[],runStart:0,state:'running',demoIndex:0};lines=[];setTrack([]);clearStart();message(demo?'正在啟動示範…':'等待第一個有效 GPS 點後開始計時…');$('badge').textContent=demo?'● 示範模式':'● 等待 GPS';run();}
-$('profile').onsubmit=e=>{e.preventDefault();begin(false);};$('demo').onclick=()=>begin(true);
-function demoTick(){const i=session.demoIndex++,angle=i*.12;session.seconds+=5;receive({lat:center[0]+.00062*Math.sin(angle),lng:center[1]+.00085*Math.cos(angle),accuracy:6,t:session.id+i*6000});}
-function pause(reason){if(!session||session.state!=='running')return;session.seconds=seconds();session.runStart=0;session.state='paused';stopWatch();last=null;$('badge').textContent='● 已暫停';message(reason||'已暫停；暫停期間不累計時間與距離。');render();}
-$('pause').onclick=()=>{if(session.state==='running')pause();else {message('等待新的有效定位後繼續…');run();}};
-function persist(){try{localStorage.setItem(KEY,JSON.stringify(records));storageOK=true;}catch{storageOK=false;message('裝置儲存空間不足或儲存被封鎖。紀錄暫留本頁，請先匯出 CSV 再離開。');}}
-$('finish').onclick=()=>{if(!session||session.state==='finished')return;session.seconds=seconds();session.runStart=0;session.state='finished';stopWatch();session.kcal=MoveCore.calories(session.met,session.weight,session.seconds);records.unshift({...session,points:[...session.points],target:target?{lat:target.lat,lng:target.lng}:null});persist();renderHistory();render();$('badge').textContent='● 運動已結束';if(storageOK)message(`已儲存${session.demo?'示範':''}紀錄：${(session.meters/1000).toFixed(2)} km，${fmt(session.seconds)}。可匯出摘要或 GPS 軌跡。`);};
-function download(name,body,type){const url=URL.createObjectURL(new Blob([body],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function cell(v){let s=String(v??'');if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';}
-function exportCSV(items){if(!items.length){message('目前沒有可匯出的紀錄。');return;}const rows=[['時間 ISO','課堂代號','類型','活動','身高 cm','體重 kg','年齡','時間 sec','距離 m','總熱量 kcal','有效 GPS 點'],...items.map(r=>[r.date,r.alias,r.demo?'示範':'GPS',r.mode,r.height,r.weight,r.age,Math.round(r.seconds),r.meters.toFixed(1),r.kcal.toFixed(1),r.points.length])];download('campus-move.csv','\ufeff'+rows.map(r=>r.map(cell).join(',')).join('\r\n'),'text/csv;charset=utf-8');}
-let historyFilter='all';
-function routeThumbnail(r){const box=document.createElement('div');box.className='route-thumb';const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 100 67');svg.setAttribute('aria-label','此筆運動軌跡縮圖');const ps=r.points||[];if(ps.length>1){const xs=ps.map(p=>p.lng),ys=ps.map(p=>p.lat),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);const scale=Math.min(76/Math.max(maxX-minX,.00001),43/Math.max(maxY-minY,.00001));const groups=new Map();for(const p of ps){const k=p.segment||0;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(`${50+(p.lng-(minX+maxX)/2)*scale},${33.5-(p.lat-(minY+maxY)/2)*scale}`);}for(const points of groups.values()){const poly=document.createElementNS(ns,'polyline');poly.setAttribute('points',points.join(' '));poly.setAttribute('fill','none');svg.append(poly);}}else{const t=document.createElementNS(ns,'text');t.setAttribute('x','50');t.setAttribute('y','38');t.setAttribute('text-anchor','middle');t.setAttribute('stroke','none');t.setAttribute('fill','#9aa987');t.setAttribute('font-size','9');t.textContent='尚無軌跡';svg.append(t);}box.append(svg);return box;}
-function renderHistory(){const root=$('records');root.replaceChildren();const actual=records.filter(r=>!r.demo);$('historyTotal').textContent=actual.length?`${actual.length} 次運動 · ${(actual.reduce((s,r)=>s+r.meters,0)/1000).toFixed(2)} km`:'尚無 GPS 運動紀錄';const shown=records.filter(r=>historyFilter==='all'||(historyFilter==='demo'?r.demo:!r.demo));if(!shown.length){root.innerHTML='<div class="empty"><div class="empty-art"><svg><use href="#i-route"/></svg></div><div><h3>從第一段路，開始累積。</h3><p>完成運動後，你的距離、時間與軌跡會留在這裡。</p></div></div>';return;}shown.forEach(r=>{const row=document.createElement('div');row.className='record';row.append(routeThumbnail(r));const info=document.createElement('div'),title=document.createElement('strong'),sub=document.createElement('small');title.textContent=`${r.demo?'示範 · ':''}${r.alias||r.mode.split(' · ')[0]}`;sub.textContent=new Date(r.date).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});info.append(title,sub);row.append(info);const stats=document.createElement('div');stats.className='record-stats';for(const [value,label]of [[(r.meters/1000).toFixed(2),'公里'],[fmt(r.seconds),'運動時間']]){const item=document.createElement('span');item.textContent=value;const unit=document.createElement('small');unit.textContent=label;item.append(unit);stats.append(item);}row.append(stats);const actions=document.createElement('div');actions.className='record-actions';for(const [label,handler]of [...(!r.demo?[['繳交',()=>window.PaceSubmit?.(r)]]:[]),['摘要',()=>exportCSV([r])],['軌跡',()=>download('campus-track.json',JSON.stringify(r,null,2),'application/json')],['刪除',()=>{if(confirm('刪除此筆運動紀錄？')){records=records.filter(x=>x.id!==r.id);persist();renderHistory();}}]]){const button=document.createElement('button');button.textContent=label;button.onclick=handler;if(label==='繳交')button.dataset.cloudOnly='';actions.append(button);}row.append(actions);root.append(row);});}
-$('openSetup').onclick=()=>$('setupDialog').showModal();$('closeSetup').onclick=()=>$('setupDialog').close();$('energyInfo').onclick=()=>$('energyDialog').showModal();$('closeEnergy').onclick=()=>$('energyDialog').close();
-$('todayDate').textContent=new Date().toLocaleDateString('zh-TW',{month:'long',day:'numeric',weekday:'short'});
-document.querySelectorAll('[data-filter]').forEach(button=>button.onclick=()=>{historyFilter=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>{b.classList.toggle('selected',b===button);b.setAttribute('aria-pressed',String(b===button));});renderHistory();});
-$('exportAll').onclick=()=>exportCSV(records);$('deleteAll').onclick=()=>{if(records.length&&confirm('永久刪除此裝置全部運動紀錄？')){records=[];persist();renderHistory();}};
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&session?.state==='running')pause('頁面已離開前景，為避免漏記與錯估已自動暫停。回到頁面後按「繼續」。');});
-window.addEventListener('beforeunload',e=>{if(session&&session.state!=='finished'){e.preventDefault();e.returnValue='';}});
-setInterval(()=>{if(session?.state==='running'&&!session.demo&&Date.now()-lastSignal>30000)pause('超過 30 秒沒有 GPS 更新，已自動暫停。請檢查定位後按繼續。');render();},1000);
-renderHistory();render();if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+const STORAGE_KEY = 'pace-campus-logs';
+const ACHIEVEMENTS_KEY = 'pace-campus-achievements';
+const DAILY_GOAL_KEY = 'pace-campus-daily-goal';
+const ACTIVE_WORKOUT_KEY = 'pace-campus-active-workout';
+let workoutTimer = null;
+let workoutSeconds = 0;
+let workoutRunning = false;
+let workoutActive = false;
+let geolocationWatchId = null;
+let routeLine = null;
+let routePoints = [];
+let gpsDistanceKm = 0;
+let lastGpsSample = null;
+let locationMessage = '';
+let selectedRouteId = null;
+let activeLogFilter = 'all';
+let activeChartMetric = 'distance';
+let activeHistoryPeriod = 'day';
 
-document.querySelectorAll('.sidenav a[href^="#"]').forEach(a=>a.addEventListener('click',()=>{document.querySelectorAll('.sidenav a').forEach(n=>n.classList.toggle('active',n===a));document.querySelector('.breadcrumb strong').textContent=a.textContent.trim();}));
+const campusLandmarks = {
+  library: { name: '圖書館步道', coords: [24.1805, 120.6468] },
+  stadium: { name: '操場廣場', coords: [24.1787, 120.6499] },
+  dormitory: { name: '宿舍步道', coords: [24.1773, 120.6438] },
+  garden: { name: '校園花園', coords: [24.1818, 120.6445] }
+};
+
+const campusRoutes = {
+  easy: {
+    name: '綠蔭散步',
+    color: '#3f8e62',
+    targetDistance: 0.7,
+    points: [[24.1794, 120.6464], [24.1805, 120.6468], [24.1812, 120.6462], [24.1808, 120.6449], [24.1798, 120.6448], [24.1794, 120.6464]]
+  },
+  steady: {
+    name: '校園慢跑',
+    color: '#d58a2a',
+    targetDistance: 1.5,
+    points: [[24.1794, 120.6464], [24.1812, 120.6478], [24.1818, 120.6452], [24.1802, 120.6437], [24.1782, 120.6444], [24.1776, 120.6471], [24.1794, 120.6464]]
+  },
+  challenge: {
+    name: '長距離挑戰',
+    color: '#c65345',
+    targetDistance: 2.8,
+    points: [[24.1794, 120.6464], [24.1822, 120.6482], [24.1831, 120.6448], [24.1814, 120.6428], [24.1784, 120.6421], [24.1764, 120.6442], [24.1762, 120.6481], [24.1781, 120.6502], [24.1794, 120.6464]]
+  }
+};
+
+const workoutAchievements = [
+  { id: 'first-minute', title: '邁出第一步', description: '運動滿 1 分鐘', target: 60, metric: 'time' },
+  { id: 'five-minutes', title: '持續前進', description: '運動滿 5 分鐘', target: 300, metric: 'time' },
+  { id: 'half-kilometer', title: '校園探索者', description: '累積距離達 0.5 公里', target: 0.5, metric: 'distance' },
+  { id: 'twenty-minutes', title: '耐力挑戰', description: '運動滿 20 分鐘', target: 1200, metric: 'time' }
+];
+
+const haversineDistance = (lat1, lon1, lat2, lon2) => {
+  const toRad = (value) => (value * Math.PI) / 180;
+  const earthRadius = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const initCampusMap = () => {
+  const mapEl = document.getElementById('campus-map');
+  if (!mapEl) return;
+
+  const fcCampus = [24.1794, 120.6464];
+  const map = L.map('campus-map', {
+    zoomControl: false,
+    attributionControl: false,
+    dragging: true,
+    scrollWheelZoom: true
+  }).setView(fcCampus, 16);
+
+  const baseLayers = {
+    map: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }),
+    satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Tiles © Esri'
+    })
+  };
+
+  const campusMarker = L.marker(fcCampus).addTo(map);
+  campusMarker.bindPopup('逢甲大學');
+
+  const routeMarker = L.layerGroup().addTo(map);
+  const landmarkGroup = L.layerGroup().addTo(map);
+  let selectedRouteLine = null;
+
+  Object.entries(campusLandmarks).forEach(([key, value]) => {
+    const marker = L.marker(value.coords).addTo(landmarkGroup);
+    marker.bindPopup(value.name);
+    marker.on('click', () => {
+      const pointEl = document.getElementById('meeting-point');
+      if (pointEl) pointEl.textContent = `${value.name}`;
+    });
+    marker._customKey = key;
+  });
+
+  routeLine = L.polyline([], { color: '#3f8e62', weight: 6, opacity: 0.9 }).addTo(map);
+
+  baseLayers.map.addTo(map);
+  L.control.zoom({ position: 'topright' }).addTo(map);
+  L.control.attribution({ position: 'bottomright', prefix: false }).addTo(map).addAttribution('© OpenStreetMap contributors');
+
+  const updateMeetingPoint = (lat, lng, label = '校園集合點') => {
+    const pointLabel = `${label}：${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    const pointEl = document.getElementById('meeting-point');
+    if (pointEl) pointEl.textContent = pointLabel;
+
+    routeMarker.clearLayers();
+    const newMarker = L.marker([lat, lng]).addTo(routeMarker);
+    newMarker.bindPopup(pointLabel).openPopup();
+    map.flyTo([lat, lng], 17, { duration: 0.8 });
+  };
+
+  map.on('click', (event) => {
+    const { lat, lng } = event.latlng;
+    updateMeetingPoint(lat, lng, '集合點');
+  });
+
+  document.querySelectorAll('.route-option').forEach((button) => {
+    button.addEventListener('click', () => {
+      const route = campusRoutes[button.dataset.route];
+      if (!route) return;
+      if (workoutActive) return;
+
+      selectedRouteId = button.dataset.route;
+      const activityLabel = document.getElementById('selected-activity');
+      if (activityLabel) activityLabel.textContent = route.name;
+
+      document.querySelectorAll('.route-option').forEach((option) => {
+        const selected = option === button;
+        option.classList.toggle('selected', selected);
+        option.setAttribute('aria-pressed', String(selected));
+      });
+
+      if (selectedRouteLine) map.removeLayer(selectedRouteLine);
+      selectedRouteLine = L.polyline(route.points, {
+        color: route.color,
+        weight: 6,
+        opacity: 0.88,
+        dashArray: '10 8'
+      }).addTo(map);
+      selectedRouteLine.bindPopup(`${route.name} · 建議路線`);
+      map.fitBounds(selectedRouteLine.getBounds(), { padding: [36, 36], maxZoom: 17 });
+
+      const note = document.getElementById('route-note');
+      if (note) note.textContent = `已預覽「${route.name}」。路線為參考示意，實際通行請留意校園動線與現場狀況。`;
+    });
+  });
+
+  document.querySelectorAll('.layer-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      const layer = button.dataset.layer;
+      document.querySelectorAll('.layer-btn').forEach((btn) => btn.classList.toggle('active', btn === button));
+
+      if (layer === 'satellite') {
+        map.removeLayer(baseLayers.map);
+        if (!map.hasLayer(baseLayers.satellite)) {
+          baseLayers.satellite.addTo(map);
+        }
+      } else {
+        map.removeLayer(baseLayers.satellite);
+        if (!map.hasLayer(baseLayers.map)) {
+          baseLayers.map.addTo(map);
+        }
+      }
+    });
+  });
+
+  const goToCampusButton = document.querySelector('.secondary.action-btn:nth-of-type(2)');
+  if (goToCampusButton) {
+    goToCampusButton.addEventListener('click', () => map.flyTo(fcCampus, 16, { duration: 1 }));
+  }
+
+  const myLocationButton = document.querySelector('.secondary.action-btn:nth-of-type(1)');
+  if (myLocationButton) {
+    myLocationButton.addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        updateMeetingPoint(fcCampus[0], fcCampus[1], '定位未支援');
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          updateMeetingPoint(latitude, longitude, '我的定位');
+        },
+        () => {
+          updateMeetingPoint(fcCampus[0], fcCampus[1], '定位失敗，回到校園');
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    });
+  }
+
+  document.querySelectorAll('.landmark-item').forEach((button) => {
+    button.addEventListener('click', () => {
+      const key = button.dataset.landmark;
+      const location = campusLandmarks[key];
+      if (!location) return;
+      updateMeetingPoint(location.coords[0], location.coords[1], location.name);
+      map.flyTo(location.coords, 17, { duration: 0.8 });
+    });
+  });
+
+  window.__campusMap = { map, routeLine, updateMeetingPoint };
+};
+
+const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+};
+
+const formatPace = (minutesPerKm) => {
+  if (!Number.isFinite(minutesPerKm) || minutesPerKm <= 0) return '0:00';
+
+  const minutes = Math.floor(minutesPerKm);
+  const seconds = Math.round((minutesPerKm - minutes) * 60);
+
+  const normalizedSeconds = seconds === 60 ? 0 : seconds;
+  const normalizedMinutes = seconds === 60 ? minutes + 1 : minutes;
+
+  return `${String(normalizedMinutes)}:${String(normalizedSeconds).padStart(2, '0')}`;
+};
+
+const loadLogs = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveLogs = (logs) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+};
+
+const renderLogList = (filter = 'all') => {
+  const list = document.getElementById('log-list');
+  if (!list) return;
+  activeLogFilter = filter;
+
+  const filteredLogs = getFilteredWorkoutLogs();
+
+  if (!filteredLogs.length) {
+    list.innerHTML = '<div class="empty-state">此篩選條件沒有運動紀錄</div>';
+    renderHistoryChart();
+    return;
+  }
+
+  list.innerHTML = filteredLogs
+    .map(
+      (entry) => `
+        <article class="log-item">
+          <div class="log-meta">
+            <strong>${entry.title}</strong>
+            <span>${entry.date}</span>
+            ${entry.routeName ? `<span>${entry.routeName}${entry.routeTargetKm ? ` · 目標 ${entry.routeTargetKm} km` : ''}</span>` : ''}
+            <span>${entry.distance} km • ${entry.time}</span>
+            ${entry.pace ? `<span>平均配速 ${entry.pace} /km</span>` : ''}
+          </div>
+          <span class="log-badge">${entry.type === 'gps' ? 'GPS' : entry.type === 'estimated' ? '估算' : '示範'}</span>
+        </article>
+      `
+    )
+    .join('');
+  renderHistoryChart();
+};
+
+const getFilteredWorkoutLogs = () => {
+  const startDate = document.getElementById('history-start')?.value || '';
+  const endDate = document.getElementById('history-end')?.value || '';
+  return loadLogs().filter((entry) => {
+    const matchesType = activeLogFilter === 'all' || entry.type === activeLogFilter;
+    const date = String(entry.date || '');
+    return matchesType && (!startDate || date >= startDate) && (!endDate || date <= endDate);
+  });
+};
+
+const parseWorkoutTimeMinutes = (value) => {
+  const parts = String(value || '').split(':').map(Number);
+  if (parts.length === 2 && parts.every(Number.isFinite)) return parts[0] + parts[1] / 60;
+  if (parts.length === 3 && parts.every(Number.isFinite)) return parts[0] * 60 + parts[1] + parts[2] / 60;
+  return 0;
+};
+
+const renderHistoryChart = () => {
+  const canvas = document.getElementById('history-chart');
+  const emptyMessage = document.getElementById('history-chart-empty');
+  const summary = document.getElementById('history-chart-summary');
+  const accessibleSummary = document.getElementById('history-chart-accessible');
+  if (!canvas || !emptyMessage || !summary || !accessibleSummary) return;
+
+  const context = canvas.getContext('2d');
+  if (!context) return;
+
+  const logs = getFilteredWorkoutLogs();
+  const groupedTotals = new Map();
+  logs.forEach((entry) => {
+    const date = String(entry.date || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const dateParts = date.split('-').map(Number);
+    const utcDate = new Date(Date.UTC(dateParts[0], dateParts[1] - 1, dateParts[2]));
+    let key = date;
+    let label = date.slice(5).replace('-', '/');
+    if (activeHistoryPeriod === 'week') {
+      const weekday = (utcDate.getUTCDay() + 6) % 7;
+      utcDate.setUTCDate(utcDate.getUTCDate() - weekday);
+      key = utcDate.toISOString().slice(0, 10);
+      label = `${key.slice(5).replace('-', '/')} 週`;
+    } else if (activeHistoryPeriod === 'month') {
+      key = date.slice(0, 7);
+      label = key.replace('-', '/');
+    }
+    const total = groupedTotals.get(key) || { distance: 0, time: 0, count: 0, label };
+    total.distance += Number.parseFloat(entry.distance) || 0;
+    total.time += parseWorkoutTimeMinutes(entry.time);
+    total.count += 1;
+    groupedTotals.set(key, total);
+  });
+
+  const groups = [...groupedTotals.entries()]
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+    .slice(activeHistoryPeriod === 'day' ? -7 : activeHistoryPeriod === 'week' ? -8 : -6)
+    .map(([key, totals]) => ({
+      key,
+      label: totals.label,
+      value: activeChartMetric === 'pace'
+        ? totals.distance > 0 ? totals.time / totals.distance : 0
+        : totals[activeChartMetric]
+    }));
+
+  const totalDistance = logs.reduce((total, entry) => total + (Number.parseFloat(entry.distance) || 0), 0);
+  const totalMinutes = logs.reduce((total, entry) => total + parseWorkoutTimeMinutes(entry.time), 0);
+  const countElement = document.getElementById('history-count');
+  const distanceElement = document.getElementById('history-distance');
+  const timeElement = document.getElementById('history-time');
+  const paceElement = document.getElementById('history-pace');
+  if (countElement) countElement.textContent = String(logs.length);
+  if (distanceElement) distanceElement.textContent = `${totalDistance.toFixed(1)} km`;
+  if (timeElement) timeElement.textContent = `${totalMinutes.toFixed(0)} 分`;
+  if (paceElement) paceElement.textContent = totalDistance > 0 ? `${formatPace(totalMinutes / totalDistance)} /km` : '--';
+
+  const width = Math.max(canvas.clientWidth, 280);
+  const height = 220;
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = width * ratio;
+  canvas.height = height * ratio;
+  canvas.style.height = `${height}px`;
+  context.scale(ratio, ratio);
+  context.clearRect(0, 0, width, height);
+
+  if (!groups.length) {
+    canvas.hidden = true;
+    emptyMessage.hidden = false;
+    summary.textContent = '尚無可顯示的運動紀錄';
+    canvas.setAttribute('aria-label', '目前沒有可顯示的運動紀錄');
+    accessibleSummary.textContent = summary.textContent;
+    return;
+  }
+
+  canvas.hidden = false;
+  emptyMessage.hidden = true;
+  const periodLabel = activeHistoryPeriod === 'day' ? '天' : activeHistoryPeriod === 'week' ? '週' : '個月';
+  summary.textContent = `最近 ${groups.length} ${periodLabel} · ${logs.length} 筆紀錄`;
+
+  const padding = { top: 18, right: 16, bottom: 36, left: 44 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxValue = Math.max(...groups.map((group) => group.value), activeChartMetric === 'pace' ? 10 : 1);
+  const step = chartWidth / groups.length;
+  const barWidth = Math.min(34, step * 0.56);
+
+  context.font = '12px "Noto Sans TC", sans-serif';
+  context.textAlign = 'right';
+  context.textBaseline = 'middle';
+  context.fillStyle = '#5f7a68';
+  context.strokeStyle = 'rgba(24, 54, 41, 0.12)';
+  context.lineWidth = 1;
+
+  for (let tick = 0; tick <= 3; tick += 1) {
+    const y = padding.top + chartHeight * (tick / 3);
+    const labelValue = activeChartMetric === 'pace' ? maxValue * (tick / 3) : maxValue * (1 - tick / 3);
+    context.beginPath();
+    context.moveTo(padding.left, y);
+    context.lineTo(width - padding.right, y);
+    context.stroke();
+    context.fillText(activeChartMetric === 'pace' ? formatPace(labelValue) : labelValue.toFixed(activeChartMetric === 'time' ? 0 : 1), padding.left - 8, y);
+  }
+
+  context.textAlign = 'center';
+  context.textBaseline = 'top';
+  context.fillStyle = '#5f7a68';
+  const points = groups.map((group, index) => {
+    const x = padding.left + step * index + step / 2;
+    const chartValue = activeChartMetric === 'pace' ? maxValue - group.value : group.value;
+    const barHeight = chartValue > 0 ? (chartValue / maxValue) * chartHeight : 0;
+    const y = padding.top + chartHeight - barHeight;
+    return { x, y, group };
+  });
+
+  if (activeChartMetric === 'pace') {
+    context.strokeStyle = '#d58a2a';
+    context.fillStyle = '#d58a2a';
+    context.lineWidth = 3;
+    context.beginPath();
+    points.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y));
+    context.stroke();
+    points.forEach((point) => {
+      context.beginPath();
+      context.arc(point.x, point.y, 4, 0, Math.PI * 2);
+      context.fill();
+    });
+  } else {
+    points.forEach((point) => {
+      context.fillStyle = '#3f8e62';
+      context.beginPath();
+      context.roundRect(point.x - barWidth / 2, point.y, barWidth, Math.max(padding.top + chartHeight - point.y, 2), 4);
+      context.fill();
+    });
+  }
+
+  context.fillStyle = '#5f7a68';
+  points.forEach((point) => context.fillText(point.group.label, point.x, height - padding.bottom + 10));
+
+  const unitLabel = activeChartMetric === 'distance' ? '公里' : activeChartMetric === 'time' ? '分鐘' : '分/公里';
+  const chartDescription = groups.map((group) => `${group.label} ${activeChartMetric === 'pace' ? formatPace(group.value) : group.value.toFixed(1)} ${unitLabel}`).join('；');
+  const metricLabel = activeChartMetric === 'distance' ? '距離' : activeChartMetric === 'time' ? '時間' : '平均配速';
+  canvas.setAttribute('aria-label', `運動${metricLabel}趨勢圖：${chartDescription}`);
+  accessibleSummary.textContent = `圖表數據：${chartDescription}`;
+};
+
+const renderReviewList = () => {
+  const target = document.getElementById('review-list');
+  if (!target) return;
+
+  const logs = loadLogs();
+  if (!logs.length) {
+    target.innerHTML = '<p class="empty-message">尚未匯入任何紀錄。</p>';
+    return;
+  }
+
+  target.innerHTML = logs
+    .map(
+      (entry) => `
+        <div class="review-item">
+          <div>
+            <strong>${entry.title}</strong>
+            <span>${entry.date}</span>
+          </div>
+          <div>
+            <span>${entry.distance} km</span>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+};
+
+const seedDemoLogs = () => {
+  const demoLogs = [
+    {
+      title: '校園步道舒適跑',
+      date: '2026-10-21',
+      distance: '2.4',
+      time: '00:18',
+      type: 'gps'
+    },
+    {
+      title: '晨間散步',
+      date: '2026-10-18',
+      distance: '1.8',
+      time: '00:15',
+      type: 'demo'
+    }
+  ];
+  saveLogs(demoLogs);
+  renderLogList();
+  renderReviewList();
+};
+
+const updateStats = () => {
+  const distanceValue = document.getElementById('distance-value');
+  const timeValue = document.getElementById('time-value');
+  const currentPaceValue = document.getElementById('current-pace-value');
+  const calorieValue = document.getElementById('calorie-value');
+  const gpsCount = document.getElementById('gps-count');
+  const status = document.getElementById('session-status');
+  if (!distanceValue || !timeValue || !currentPaceValue || !calorieValue || !gpsCount || !status) return;
+
+  const elapsed = workoutSeconds;
+  const currentDistance = routePoints.length > 1 ? gpsDistanceKm : elapsed / 3600 * 0.9;
+  const averagePace = elapsed > 0 && currentDistance > 0 ? formatPace(elapsed / 60 / currentDistance) : '0:00';
+  const calories = Math.round(currentDistance * 75);
+
+  distanceValue.textContent = currentDistance.toFixed(2);
+  timeValue.textContent = formatTime(elapsed);
+  currentPaceValue.textContent = averagePace;
+  calorieValue.textContent = String(calories);
+  gpsCount.textContent = `${routePoints.length} 個有效點`;
+
+  if (status) {
+    status.textContent = workoutRunning
+      ? locationMessage || '運動記錄中，等待 GPS 定位。'
+      : workoutActive
+        ? '運動已暫停，可繼續或完成儲存。'
+        : locationMessage || '定位已開啟，準備記錄你的第一步。';
+    status.classList.toggle('online', workoutRunning);
+  }
+
+  updateWorkoutAchievements(elapsed, currentDistance);
+  updateDailyGoal(workoutActive ? elapsed : 0);
+  if (workoutActive) {
+    localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify({
+      seconds: workoutSeconds,
+      routeId: selectedRouteId,
+      points: routePoints,
+      gpsDistanceKm
+    }));
+  }
+};
+
+const updateDailyGoal = (currentWorkoutSeconds = 0) => {
+  const select = document.getElementById('daily-goal-select');
+  const progress = document.querySelector('.daily-goal-progress');
+  const summary = document.getElementById('daily-goal-summary');
+  if (!select || !progress || !summary) return;
+
+  const savedGoal = Number(localStorage.getItem(DAILY_GOAL_KEY));
+  const goalMinutes = [20, 30, 45].includes(savedGoal) ? savedGoal : 30;
+  select.value = String(goalMinutes);
+  const today = new Date();
+  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const completedSeconds = loadLogs()
+    .filter((entry) => entry.date === todayString)
+    .reduce((total, entry) => total + parseWorkoutTimeMinutes(entry.time) * 60, 0);
+  const totalMinutes = (completedSeconds + currentWorkoutSeconds) / 60;
+  const percent = Math.min(100, Math.round((totalMinutes / goalMinutes) * 100));
+  progress.setAttribute('aria-valuenow', String(percent));
+  progress.querySelector('span').style.width = `${percent}%`;
+  summary.textContent = `今日 ${Math.min(totalMinutes, goalMinutes).toFixed(0)} / ${goalMinutes} 分鐘${percent >= 100 ? ' · 已達標' : ''}`;
+};
+
+const updateWorkoutAchievements = (elapsedSeconds, distanceKm) => {
+  const list = document.getElementById('achievement-list');
+  if (!list) return;
+
+  const today = new Date();
+  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayLogs = loadLogs().filter((entry) => entry.date === todayString);
+  const loggedSeconds = todayLogs.reduce((total, entry) => total + parseWorkoutTimeMinutes(entry.time) * 60, 0);
+  const loggedDistance = todayLogs.reduce((total, entry) => total + (Number.parseFloat(entry.distance) || 0), 0);
+  const completedSeconds = loggedSeconds + (workoutActive ? elapsedSeconds : 0);
+  const completedDistance = loggedDistance + (workoutActive ? distanceKm : 0);
+  let unlockedByDate = {};
+  try {
+    unlockedByDate = JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}');
+  } catch {
+    unlockedByDate = {};
+  }
+  const unlockedToday = new Set(Array.isArray(unlockedByDate[todayString]) ? unlockedByDate[todayString] : []);
+
+  list.innerHTML = workoutAchievements.map((achievement) => {
+    const current = achievement.metric === 'time' ? completedSeconds : completedDistance;
+    const progress = Math.min(100, Math.round((current / achievement.target) * 100));
+    if (current >= achievement.target) unlockedToday.add(achievement.id);
+    const unlocked = unlockedToday.has(achievement.id);
+
+    return `
+      <article class="achievement-item${unlocked ? ' is-unlocked' : ''}">
+        <div class="achievement-copy">
+          <strong>${achievement.title}</strong>
+          <span>${unlocked ? '已達成' : achievement.description}</span>
+        </div>
+        <div class="achievement-progress" role="progressbar" aria-label="${achievement.title}" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
+          <span style="width: ${progress}%"></span>
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  unlockedByDate[todayString] = [...unlockedToday];
+  localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlockedByDate));
+};
+
+const startWorkoutTimer = () => {
+  if (workoutRunning) return;
+
+  if (!workoutActive) {
+    workoutSeconds = 0;
+    gpsDistanceKm = 0;
+    routePoints = [];
+    lastGpsSample = null;
+    locationMessage = '';
+    if (window.__campusMap?.routeLine) window.__campusMap.routeLine.setLatLngs([]);
+  }
+
+  workoutActive = true;
+  workoutRunning = true;
+  updateStats();
+
+  workoutTimer = setInterval(() => {
+    if (!workoutRunning) return;
+    workoutSeconds += 1;
+    updateStats();
+  }, 1000);
+
+  if (!navigator.geolocation) {
+    locationMessage = '此裝置不支援 GPS，距離將以時間估算。';
+    updateStats();
+    return;
+  }
+
+  if (!window.__campusMap) {
+    return;
+  }
+
+  lastGpsSample = null;
+  geolocationWatchId = navigator.geolocation.watchPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords;
+      const accuracy = position.coords.accuracy;
+      const now = position.timestamp || Date.now();
+      if (!Number.isFinite(accuracy) || accuracy > 35) {
+        locationMessage = 'GPS 精度不足，已忽略此定位點。';
+        updateStats();
+        return;
+      }
+
+      const point = { lat: latitude, lng: longitude };
+      if (lastGpsSample) {
+        const elapsedSeconds = Math.max((now - lastGpsSample.timestamp) / 1000, 1);
+        const rawDistanceKm = haversineDistance(lastGpsSample.lat, lastGpsSample.lng, latitude, longitude);
+        const uncertaintyKm = (lastGpsSample.accuracy + accuracy) / 2000;
+        const segmentDistanceKm = Math.max(0, rawDistanceKm - uncertaintyKm);
+        const segmentSpeedKmh = segmentDistanceKm / (elapsedSeconds / 3600);
+        if (segmentSpeedKmh > 25) {
+          lastGpsSample = { ...point, accuracy, timestamp: now };
+          locationMessage = '已排除異常 GPS 位移，正在重新校正。';
+          updateStats();
+          return;
+        }
+        if (segmentDistanceKm < 0.005) {
+          lastGpsSample = { ...point, accuracy, timestamp: now };
+          locationMessage = 'GPS 定位正常，等待有效移動。';
+          updateStats();
+          return;
+        }
+        gpsDistanceKm += segmentDistanceKm;
+      }
+
+      lastGpsSample = { ...point, accuracy, timestamp: now };
+      routePoints.push(point);
+      locationMessage = `GPS 定位中，精度約 ${Math.round(accuracy)} 公尺。`;
+      if (routePoints.length > 1 && window.__campusMap?.routeLine) {
+        const latlngs = routePoints.map((item) => [item.lat, item.lng]);
+        window.__campusMap.routeLine.setLatLngs(latlngs);
+      }
+      updateStats();
+    },
+    (error) => {
+      locationMessage = error.code === 1
+        ? '定位權限未開啟，距離將以時間估算。'
+        : error.code === 3
+          ? 'GPS 定位逾時，仍可繼續運動。'
+          : 'GPS 暫時無法使用，距離將以時間估算。';
+      updateStats();
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+  );
+};
+
+const stopWorkoutTimer = () => {
+  workoutRunning = false;
+  if (workoutTimer) {
+    clearInterval(workoutTimer);
+    workoutTimer = null;
+  }
+  if (geolocationWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(geolocationWatchId);
+    geolocationWatchId = null;
+  }
+  updateStats();
+};
+
+const finishWorkout = () => {
+  if (!workoutActive) return;
+  stopWorkoutTimer();
+
+  if (workoutSeconds < 1) {
+    const status = document.getElementById('session-status');
+    if (status) status.textContent = '運動時間太短，尚未建立紀錄。';
+    return;
+  }
+
+  const distanceKm = routePoints.length > 1 ? gpsDistanceKm : workoutSeconds / 3600 * 0.9;
+  const route = selectedRouteId ? campusRoutes[selectedRouteId] : null;
+  const date = new Date();
+  const localDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const log = {
+    title: route?.name || '自由運動',
+    routeName: route?.name || '',
+    routeTargetKm: route?.targetDistance || '',
+    date: localDate,
+    distance: distanceKm.toFixed(2),
+    time: formatTime(workoutSeconds),
+    type: routePoints.length > 1 ? 'gps' : 'estimated',
+    pace: distanceKm > 0 ? formatPace(workoutSeconds / 60 / distanceKm) : '0:00'
+  };
+
+  saveLogs([log, ...loadLogs()]);
+  localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+  workoutActive = false;
+  locationMessage = '運動完成，紀錄已儲存。';
+  const startButton = document.getElementById('start-btn');
+  if (startButton) startButton.innerHTML = '<span>開始新運動</span>';
+  const finishButton = document.getElementById('finish-btn');
+  if (finishButton) finishButton.hidden = true;
+  document.querySelectorAll('.route-option').forEach((option) => { option.disabled = false; });
+  renderLogList(activeLogFilter);
+  renderReviewList();
+  updateStats();
+  const status = document.getElementById('session-status');
+  if (status) status.textContent = `運動完成，${log.distance} 公里紀錄已儲存。`;
+};
+
+const restoreActiveWorkout = () => {
+  let draft;
+  try {
+    draft = JSON.parse(localStorage.getItem(ACTIVE_WORKOUT_KEY) || 'null');
+  } catch {
+    localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+    return;
+  }
+  if (!draft || !Number.isFinite(draft.seconds) || draft.seconds < 1) return;
+
+  workoutSeconds = draft.seconds;
+  workoutActive = true;
+  workoutRunning = false;
+  selectedRouteId = campusRoutes[draft.routeId] ? draft.routeId : null;
+  routePoints = Array.isArray(draft.points) ? draft.points.filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng)) : [];
+  gpsDistanceKm = Number.isFinite(draft.gpsDistanceKm) ? draft.gpsDistanceKm : 0;
+
+  const finishButton = document.getElementById('finish-btn');
+  const startButton = document.getElementById('start-btn');
+  if (finishButton) finishButton.hidden = false;
+  if (startButton) startButton.innerHTML = '<span>繼續運動</span>';
+  document.querySelectorAll('.route-option').forEach((button) => {
+    const selected = button.dataset.route === selectedRouteId;
+    button.disabled = true;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  const activityLabel = document.getElementById('selected-activity');
+  if (activityLabel) activityLabel.textContent = selectedRouteId ? campusRoutes[selectedRouteId].name : '自由運動';
+  if (routePoints.length > 1 && window.__campusMap?.routeLine) {
+    window.__campusMap.routeLine.setLatLngs(routePoints.map((point) => [point.lat, point.lng]));
+  }
+  locationMessage = '已還原未完成的運動，可繼續記錄或完成儲存。';
+  updateStats();
+};
+
+const bindControls = () => {
+  const startButton = document.getElementById('start-btn');
+  const finishButton = document.getElementById('finish-btn');
+  const clearButton = document.getElementById('clear-btn');
+  const exportButton = document.getElementById('export-btn');
+  const filterButtons = document.querySelectorAll('.filter-btn');
+  const chartButtons = document.querySelectorAll('.chart-switch-btn');
+  const periodButtons = document.querySelectorAll('.period-switch-btn');
+  const dailyGoalSelect = document.getElementById('daily-goal-select');
+  const historyDateInputs = [document.getElementById('history-start'), document.getElementById('history-end')].filter(Boolean);
+
+  if (startButton) {
+    startButton.addEventListener('click', () => {
+      const status = document.getElementById('session-status');
+      if (!workoutRunning) {
+        if (!workoutActive) {
+          if (finishButton) finishButton.hidden = false;
+          document.querySelectorAll('.route-option').forEach((option) => { option.disabled = true; });
+        }
+        startButton.innerHTML = '<span>暫停運動</span>';
+        startWorkoutTimer();
+      } else {
+        startButton.innerHTML = '<span>繼續運動</span>';
+        stopWorkoutTimer();
+      }
+    });
+  }
+
+  if (finishButton) finishButton.addEventListener('click', finishWorkout);
+
+  if (dailyGoalSelect) {
+    const savedGoal = localStorage.getItem(DAILY_GOAL_KEY);
+    if (savedGoal) dailyGoalSelect.value = savedGoal;
+    dailyGoalSelect.addEventListener('change', () => {
+      localStorage.setItem(DAILY_GOAL_KEY, dailyGoalSelect.value);
+      updateDailyGoal(workoutActive ? workoutSeconds : 0);
+    });
+  }
+
+  if (clearButton) {
+    clearButton.addEventListener('click', () => {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+      renderLogList();
+      renderReviewList();
+      workoutSeconds = 0;
+      workoutRunning = false;
+      workoutActive = false;
+      routePoints = [];
+      gpsDistanceKm = 0;
+      lastGpsSample = null;
+      locationMessage = '';
+      selectedRouteId = null;
+      if (window.__campusMap?.routeLine) {
+        window.__campusMap.routeLine.setLatLngs([]);
+      }
+      if (startButton) {
+        startButton.innerHTML = '<span>開始運動</span>';
+      }
+      if (finishButton) finishButton.hidden = true;
+      document.querySelectorAll('.route-option').forEach((option) => {
+        option.disabled = false;
+        option.classList.remove('selected');
+        option.setAttribute('aria-pressed', 'false');
+      });
+      const activityLabel = document.getElementById('selected-activity');
+      if (activityLabel) activityLabel.textContent = '自由運動';
+      stopWorkoutTimer();
+      const status = document.getElementById('session-status');
+      if (status) {
+        status.textContent = '已清除所有紀錄，準備開始新的一次。';
+        status.classList.remove('online');
+      }
+      updateStats();
+    });
+  }
+
+  if (exportButton) {
+    exportButton.addEventListener('click', () => {
+      const logs = loadLogs();
+      if (!logs.length) {
+        alert('目前沒有可匯出的紀錄。');
+        return;
+      }
+
+      const csv = [
+        ['title,date,distance,time,type,routeName,routeTargetKm,pace'],
+        ...logs.map((entry) => [entry.title, entry.date, entry.distance, entry.time, entry.type, entry.routeName || '', entry.routeTargetKm || '', entry.pace || ''].join(','))
+      ].join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'pace-campus-logs.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  filterButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      filterButtons.forEach((btn) => btn.classList.toggle('active', btn === button));
+      renderLogList(button.dataset.filter || 'all');
+    });
+  });
+
+  historyDateInputs.forEach((input) => input.addEventListener('change', () => renderLogList(activeLogFilter)));
+
+  periodButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      activeHistoryPeriod = ['day', 'week', 'month'].includes(button.dataset.period) ? button.dataset.period : 'day';
+      periodButtons.forEach((periodButton) => {
+        const selected = periodButton === button;
+        periodButton.classList.toggle('active', selected);
+        periodButton.setAttribute('aria-pressed', String(selected));
+      });
+      renderHistoryChart();
+    });
+  });
+
+  chartButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      activeChartMetric = ['distance', 'time', 'pace'].includes(button.dataset.metric) ? button.dataset.metric : 'distance';
+      chartButtons.forEach((chartButton) => {
+        const selected = chartButton === button;
+        chartButton.classList.toggle('active', selected);
+        chartButton.setAttribute('aria-pressed', String(selected));
+      });
+      renderHistoryChart();
+    });
+  });
+
+  window.addEventListener('resize', renderHistoryChart);
+
+  const csvUpload = document.getElementById('csv-upload');
+  if (csvUpload) {
+    csvUpload.addEventListener('change', (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result || '');
+        const rows = text.split(/\r?\n/).filter(Boolean);
+        if (rows.length < 2) return;
+
+        const logged = rows.slice(1).map((row, index) => {
+          const [title, date, distance, time, type = 'gps', routeName = '', routeTargetKm = '', pace = ''] = row.split(',');
+          return {
+            title: title || `匯入紀錄 ${index + 1}`,
+            date: date || new Date().toISOString().slice(0, 10),
+            distance: distance || '0.0',
+            time: time || '00:00',
+            type: type.trim() || 'gps',
+            routeName,
+            routeTargetKm,
+            pace
+          };
+        });
+
+        const merged = [...loadLogs(), ...logged];
+        saveLogs(merged);
+        renderLogList();
+        renderReviewList();
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  const demoImport = document.getElementById('demo-import');
+  if (demoImport) {
+    demoImport.addEventListener('click', () => {
+      seedDemoLogs();
+    });
+  }
+};
+
+window.addEventListener('DOMContentLoaded', () => {
+  initCampusMap();
+  renderLogList();
+  renderReviewList();
+  bindControls();
+  restoreActiveWorkout();
+  updateStats();
+});
