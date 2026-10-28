@@ -11,6 +11,10 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <script defer src="https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js"></script>
+    <script defer src="firebase-config.js"></script>
+    <script defer src="auth.js"></script>
     <script defer src="app.js"></script>
   </head>
   <body data-page="handout">
@@ -28,6 +32,18 @@
           <a href="index.html#exercise">開始運動</a>
           <a href="review.html">匯入檢視</a>
           <a href="guide.html">使用說明</a>
+          <div class="auth-controls">
+            <button class="google-sign-in" id="google-sign-in" type="button" disabled>
+              <span class="google-mark" aria-hidden="true">G</span>
+              <span>使用 Google 登入</span>
+            </button>
+            <div class="auth-user" id="auth-user" hidden>
+              <img class="auth-avatar" id="auth-avatar" alt="" />
+              <span class="auth-user-name" id="auth-user-name"></span>
+              <button class="auth-sign-out" id="google-sign-out" type="button">登出</button>
+            </div>
+            <span class="auth-message" id="auth-message" role="status" aria-live="polite">正在載入登入服務…</span>
+          </div>
         </nav>
       </header>
 

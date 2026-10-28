@@ -132,6 +132,86 @@ input {
   outline: none;
 }
 
+.auth-controls {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  min-width: 190px;
+}
+
+.auth-controls [hidden] {
+  display: none;
+}
+
+.google-sign-in,
+.auth-sign-out {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 8px 13px;
+  border: 1px solid rgba(17, 45, 31, 0.14);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.google-sign-in:hover:not(:disabled),
+.auth-sign-out:hover {
+  background: rgba(63, 142, 98, 0.08);
+}
+
+.google-sign-in:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.google-mark {
+  color: #4285f4;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.auth-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+}
+
+.auth-avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.auth-user-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-sign-out {
+  min-height: 34px;
+  padding: 5px 9px;
+  font-size: 0.82rem;
+}
+
+.auth-message {
+  max-width: 260px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-align: right;
+}
+
 .page-wrap {
   padding-top: 32px;
 }
@@ -1404,6 +1484,14 @@ input {
     justify-content: space-between;
   }
 
+  .auth-controls {
+    justify-items: start;
+  }
+
+  .auth-message {
+    text-align: left;
+  }
+
   .hero-copy {
     padding-left: 0;
   }
@@ -1436,6 +1524,14 @@ input {
   .main-nav a {
     font-size: 0.9rem;
     padding: 8px 10px;
+  }
+
+  .auth-controls {
+    width: 100%;
+  }
+
+  .auth-user {
+    max-width: 100%;
   }
 
   .route-options {
