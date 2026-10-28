@@ -92,6 +92,7 @@ const initCampusMap = () => {
   const routeMarker = L.layerGroup().addTo(map);
   const landmarkGroup = L.layerGroup().addTo(map);
   let selectedRouteLine = null;
+  let routeRequestId = 0;
 
   Object.entries(campusLandmarks).forEach(([key, value]) => {
     const marker = L.marker(value.coords).addTo(landmarkGroup);
@@ -126,33 +127,68 @@ const initCampusMap = () => {
   });
 
   document.querySelectorAll('.route-option').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const route = campusRoutes[button.dataset.route];
       if (!route) return;
       if (workoutActive) return;
 
-      selectedRouteId = button.dataset.route;
-      const activityLabel = document.getElementById('selected-activity');
-      if (activityLabel) activityLabel.textContent = route.name;
-
-      document.querySelectorAll('.route-option').forEach((option) => {
-        const selected = option === button;
-        option.classList.toggle('selected', selected);
-        option.setAttribute('aria-pressed', String(selected));
-      });
-
-      if (selectedRouteLine) map.removeLayer(selectedRouteLine);
-      selectedRouteLine = L.polyline(route.points, {
-        color: route.color,
-        weight: 6,
-        opacity: 0.88,
-        dashArray: '10 8'
-      }).addTo(map);
-      selectedRouteLine.bindPopup(`${route.name} · 建議路線`);
-      map.fitBounds(selectedRouteLine.getBounds(), { padding: [36, 36], maxZoom: 17 });
-
       const note = document.getElementById('route-note');
-      if (note) note.textContent = `已預覽「${route.name}」。路線為參考示意，實際通行請留意校園動線與現場狀況。`;
+      const requestId = ++routeRequestId;
+      const routeButtons = [...document.querySelectorAll('.route-option')];
+      routeButtons.forEach((option) => { option.disabled = true; });
+      if (note) note.textContent = `正在依道路與步道規劃「${route.name}」…`;
+      if (selectedRouteLine) {
+        map.removeLayer(selectedRouteLine);
+        selectedRouteLine = null;
+      }
+
+      try {
+        const waypoints = route.points.map(([lat, lng]) => `${lng},${lat}`).join(';');
+        const url = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${waypoints}?overview=full&geometries=geojson`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('路線服務暫時無法使用。');
+        const result = await response.json();
+        const roadRoute = result.routes?.[0];
+        const coordinates = roadRoute?.geometry?.coordinates;
+        if (result.code !== 'Ok' || !Array.isArray(coordinates) || coordinates.length < 2) {
+          throw new Error('這些地點之間目前找不到步行道路。');
+        }
+        if (requestId !== routeRequestId) return;
+
+        const roadPoints = coordinates.map(([lng, lat]) => [lat, lng]);
+        selectedRouteId = button.dataset.route;
+        route.targetDistance = roadRoute.distance / 1000;
+        const activityLabel = document.getElementById('selected-activity');
+        if (activityLabel) activityLabel.textContent = route.name;
+
+        routeButtons.forEach((option) => {
+          const selected = option === button;
+          option.classList.toggle('selected', selected);
+          option.setAttribute('aria-pressed', String(selected));
+          const meta = option.querySelector('.route-option-meta');
+          if (selected && meta) {
+            const distanceKm = roadRoute.distance / 1000;
+            const walkingMinutes = Math.round(roadRoute.duration / 60);
+            meta.textContent = `沿道路與步道 · ${distanceKm.toFixed(1)} km · 約 ${walkingMinutes} 分鐘`;
+          }
+        });
+
+        selectedRouteLine = L.polyline(roadPoints, {
+          color: route.color,
+          weight: 6,
+          opacity: 0.9
+        }).addTo(map);
+        selectedRouteLine.bindPopup(`${route.name} · 沿道路與步道`);
+        map.fitBounds(selectedRouteLine.getBounds(), { padding: [36, 36], maxZoom: 17 });
+        if (note) note.textContent = `「${route.name}」已沿 OpenStreetMap 步行路網規劃，約 ${route.targetDistance.toFixed(1)} 公里。實際通行請留意現場標示與道路狀況。`;
+      } catch (error) {
+        if (requestId !== routeRequestId) return;
+        if (note) note.textContent = `${error.message} 請檢查網路後重試；未載入時不會顯示穿越建物的直線路徑。`;
+      } finally {
+        if (requestId === routeRequestId && !workoutActive) {
+          routeButtons.forEach((option) => { option.disabled = false; });
+        }
+      }
     });
   });
 
